@@ -108,58 +108,35 @@ byte getChargeState() {
 template <int PIN>
 class LED {
 public:
-    class BlinkContext {
+    class Context {
     public:
-        BlinkContext(LED& led): _led(led), _isBlinking(false) {}
-
-        void blink() {
-            if(!_isBlinking) {
-                _isBlinking = true;
-                _led.incBlink();
-            }
-        }
-
-        void stopBlink() {
-            if(_isBlinking) {
-                _isBlinking = false;
-                _led.decBlink();
-            }
-        }
-
-        ~BlinkContext() {
-            stopBlink();
-        }
-
-    private:
-        LED& _led;
-        boolean _isBlinking;
-    };
-
-    class OnContext {
-    public:
-        OnContext(LED& led): _led(led), _isOn(false) {}
+        Context(LED& led): _led(led), _mode(LED_OFF) {}
 
         void on() {
-            if(!_isOn) {
-                _isOn = true;
-                _led.incOn();
-            }
+            if(_mode == LED_BLINK) _led.decBlink();
+            _mode = LED_ON;
+            _led.incOn();
+        }
+
+        void blink() {
+            if(_mode == LED_ON) _led.decOn();
+            _mode = LED_BLINK;
+            _led.incBlink();
         }
 
         void off() {
-            if(_isOn) {
-                _isOn = false;
-                _led.decOn();
-            }
+            if(_mode == LED_ON) _led.decOn();
+            else if(_mode == LED_BLINK) _led.decBlink();
+            _mode = LED_OFF;
         }
 
-        ~OnContext() {
+        ~Context() {
             off();
         }
 
     private:
         LED& _led;
-        boolean _isOn;
+        byte _mode;
     };
 
     void handle(long time) {
@@ -174,16 +151,11 @@ public:
         }
     }
 
-    OnContext getOnContext() {
-        return OnContext(*this);
+    Context getContext() {
+        return Context(*this);
     }
 
-    BlinkContext getBlinkContext() {
-        return BlinkContext(*this);
-    }
-
-    friend BlinkContext;
-    friend OnContext;
+    friend Context;
 
 private:
     byte _nOns;
@@ -212,15 +184,10 @@ typedef LED<DPIN_GLED> GreenLED;
 // Wrapper controlling the red LED
 class RedLED {
 public:
-    typedef LED<DPIN_RLED_SW>::BlinkContext BlinkContext;
-    typedef LED<DPIN_RLED_SW>::OnContext OnContext;
+    typedef LED<DPIN_RLED_SW>::Context Context;
 
-    OnContext getOnContext() {
-        return _led.getOnContext();
-    }
-
-    BlinkContext getBlinkContext() {
-        return _led.getBlinkContext();
+    Context getContext() {
+        return _led.getContext();
     }
 
     void handle(long time) {
@@ -519,11 +486,10 @@ void setup()
     Serial.println("Powered up!");
 }
 
-GreenLED::BlinkContext chargingLEDContext = hb.gled.getBlinkContext();
-GreenLED::OnContext chargedLEDContext = hb.gled.getOnContext();
+GreenLED::Context chargingLEDContext = hb.gled.getContext();
 
-RedLED::BlinkContext temperatureLEDContext = hb.rled.getBlinkContext();
-RedLED::BlinkContext batteryLEDContext = hb.rled.getBlinkContext();
+RedLED::Context temperatureLEDContext = hb.rled.getContext();
+RedLED::Context batteryLEDContext = hb.rled.getContext();
 
 void loop()
 {
@@ -537,21 +503,18 @@ void loop()
 
     if(chargeState == CHARGING) {
         chargingLEDContext.blink();
-        chargedLEDContext.off();
     }
     else if(chargeState == CHARGED) {
-        chargingLEDContext.stopBlink();
-        chargedLEDContext.on();
+        chargingLEDContext.on();
     }
     else if(chargeState == BATTERY) {
-        chargingLEDContext.stopBlink();
-        chargedLEDContext.off();
+        chargingLEDContext.off();
 
         if(low_voltage_state()) {
             batteryLEDContext.blink();
         }
         else {
-            batteryLEDContext.stopBlink();
+            batteryLEDContext.off();
         }
     }
 
@@ -570,7 +533,7 @@ void loop()
         }
         else if(temperature < SAFE_TEMP) {
             hb.setMaxPower(255);
-            temperatureLEDContext.stopBlink();
+            temperatureLEDContext.off();
         }
     }
 
