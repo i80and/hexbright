@@ -1,8 +1,6 @@
 /*
-
-A bastardized hybrid of the factory firmware with dhiltonp's firmware framework
-    https://github.com/dhiltonp/hexbright/
-
+    A bastardized monstrosity containing original code, factory firmware code, and
+    dhiltonp's firmware framework.  For licensing details, please see the provided LICENSE file.
 */
 
 #include <math.h>
@@ -61,19 +59,6 @@ unsigned int read_adc(unsigned char pin) {
     return ADC;
 }
 
-byte getChargeState() {
-    int chargeState = analogRead(APIN_CHARGE);
-    if (chargeState < 128) {
-        return CHARGING;
-    }
-    else if (chargeState > 768) {
-        return CHARGED;
-    }
-    else {
-        return BATTERY;
-    }
-}
-
 void read_avr_voltage(byte chargeState) {
     band_gap_reading = read_adc(APIN_BAND_GAP);
     if(chargeState==BATTERY)
@@ -98,11 +83,28 @@ boolean low_voltage_state() {
     return low;
 }
 
-#define BLINK_RATE 0
+byte getChargeState() {
+    int chargeState = analogRead(APIN_CHARGE);
+    if (chargeState < 128) {
+        return CHARGING;
+    }
+    else if (chargeState > 768) {
+        return CHARGED;
+    }
+    else {
+        return BATTERY;
+    }
+}
 
+#define BLINK_RATE 0
 #define LED_OFF 0
 #define LED_BLINK 1
 #define LED_ON 2
+// Absolutely ridiculous and overwrought LED manager.  Templated over pin ID, and providing
+// several features:
+//   - Blinking (Mainloop must call handle())
+//   - Counted command handling: provides context managers.  For instance, in the case of
+//     blink(), blink(), stopBlink(), the LED should remain blinking.
 template <int PIN>
 class LED {
 public:
@@ -172,11 +174,11 @@ public:
         }
     }
 
-    OnContext on() {
+    OnContext getOnContext() {
         return OnContext(*this);
     }
 
-    BlinkContext blink() {
+    BlinkContext getBlinkContext() {
         return BlinkContext(*this);
     }
 
@@ -204,8 +206,33 @@ private:
     }
 };
 
+// Controls the green LED
 typedef LED<DPIN_GLED> GreenLED;
 
+// Wrapper controlling the red LED
+class RedLED {
+public:
+    typedef LED<DPIN_RLED_SW>::BlinkContext BlinkContext;
+    typedef LED<DPIN_RLED_SW>::OnContext OnContext;
+
+    OnContext getOnContext() {
+        return _led.getOnContext();
+    }
+
+    BlinkContext getBlinkContext() {
+        return _led.getBlinkContext();
+    }
+
+    void handle(long time) {
+        pinMode(DPIN_RLED_SW, OUTPUT);
+        _led.handle(time);
+    }
+
+private:
+    LED<DPIN_RLED_SW> _led;
+};
+
+// Structure controlling the light and LEDs
 struct HexBright {
     HexBright(): _maxPower(255) {}
 
@@ -239,36 +266,18 @@ struct HexBright {
     }
 
     GreenLED gled;
-    class RedLED {
-    public:
-        typedef LED<DPIN_RLED_SW>::BlinkContext BlinkContext;
-        typedef LED<DPIN_RLED_SW>::OnContext OnContext;
-
-        OnContext on() {
-            return _led.on();
-        }
-
-        BlinkContext blink() {
-            return _led.blink();
-        }
-
-        void handle(long time) {
-            pinMode(DPIN_RLED_SW, OUTPUT);
-            _led.handle(time);
-        }
-
-    private:
-        LED<DPIN_RLED_SW> _led;
-    } rled;
+    RedLED rled;
 
 private:
     byte _maxPower;
 } hb;
 
+// Abstract base class for all state machine handler objects
 class Handler {
 public:
-    virtual void init() {}
+    virtual void init() = 0;
 
+    // Called during the mainloop after all events have been handled
     virtual void handle(long time) {}
 
     // Called when the button is first pressed
@@ -283,11 +292,13 @@ public:
     // Called when the button has been released after being held down
     virtual void onButtonHoldRelease(long holdTime) {}
 
+    // Called when the light is overheating.  This should usually repower the light
     virtual void onHighTemperature() {}
 
-    // Useful for debugging
+    // Return this handler's human-readable name: useful for debugging
     virtual const char* getName() {return "Base";}
 
+    // Change the current handler object
     void setHandler(Handler* newHandler);
 };
 
@@ -508,18 +519,17 @@ void setup()
     Serial.println("Powered up!");
 }
 
-GreenLED::BlinkContext chargingLEDContext = hb.gled.blink();
-GreenLED::OnContext chargedLEDContext = hb.gled.on();
+GreenLED::BlinkContext chargingLEDContext = hb.gled.getBlinkContext();
+GreenLED::OnContext chargedLEDContext = hb.gled.getOnContext();
 
-HexBright::RedLED::BlinkContext temperatureLEDContext = hb.rled.blink();
-HexBright::RedLED::BlinkContext batteryLEDContext = hb.rled.blink();
+RedLED::BlinkContext temperatureLEDContext = hb.rled.getBlinkContext();
+RedLED::BlinkContext batteryLEDContext = hb.rled.getBlinkContext();
 
 void loop()
 {
     static unsigned long lastTempTime;
 
     unsigned long time = millis();
-    Serial.println(time-oldTime);
 
     // Check the state of the charge controller
     int chargeState = getChargeState();
