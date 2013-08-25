@@ -83,18 +83,50 @@ boolean low_voltage_state() {
     return low;
 }
 
-byte getChargeState() {
-    int chargeState = analogRead(APIN_CHARGE);
-    if (chargeState < 128) {
-        return CHARGING;
+class ChargeController {
+public:
+    ChargeController(): _oldChargeState(BATTERY), _chargeTime(0) {}
+
+    void init() {
+        _chargeTime = millis();
+        _oldChargeState = getImmediateChargeState();
     }
-    else if (chargeState > 768) {
-        return CHARGED;
+
+    byte getChargeState(unsigned long time) {
+        // Check the state of the charge controller
+        byte chargeState = getImmediateChargeState();
+
+        // The charging pin gives confusing results if the light is discharged while plugged in.
+        // Consequently, we only acknowledge state changes lasting more than 100ms
+        if((chargeState == _oldChargeState) && ((time-_chargeTime) > 100)) {
+            return chargeState;
+        }
+
+        if(chargeState != _oldChargeState) {
+            _chargeTime = time;
+            _oldChargeState = chargeState;
+        }
+
+        return _oldChargeState;
     }
-    else {
-        return BATTERY;
+
+private:
+    byte _oldChargeState;
+    unsigned long _chargeTime;
+
+    byte getImmediateChargeState() {
+        int chargeState = analogRead(APIN_CHARGE);
+        if (chargeState < 128) {
+            return CHARGING;
+        }
+        else if (chargeState > 768) {
+            return CHARGED;
+        }
+        else {
+            return BATTERY;
+        }
     }
-}
+} chargeController;
 
 #define BLINK_RATE 0
 #define LED_OFF 0
@@ -487,6 +519,7 @@ void setup()
     eventHandler = &offHandler;
     eventHandler->init();
     dispatcher.init();
+    chargeController.init();
 
     Serial.println("Powered up!");
 }
@@ -503,8 +536,7 @@ void loop()
     unsigned long time = millis();
 
     // Check the state of the charge controller
-    int chargeState = getChargeState();
-    read_avr_voltage(chargeState);
+    byte chargeState = chargeController.getChargeState(time);
 
     if(chargeState == CHARGING) {
         chargingLEDContext.blink();
@@ -515,6 +547,7 @@ void loop()
     else if(chargeState == BATTERY) {
         chargingLEDContext.off();
 
+        read_avr_voltage(chargeState);
         if(low_voltage_state()) {
             batteryLEDContext.blink();
         }
