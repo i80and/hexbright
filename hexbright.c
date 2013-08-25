@@ -114,14 +114,18 @@ public:
 
         void on() {
             if(_mode == LED_BLINK) _led.decBlink();
-            _mode = LED_ON;
-            _led.incOn();
+            if(_mode != LED_ON) {
+                _mode = LED_ON;
+                _led.incOn();
+            }
         }
 
         void blink() {
             if(_mode == LED_ON) _led.decOn();
-            _mode = LED_BLINK;
-            _led.incBlink();
+            if(_mode != LED_BLINK) {
+                _mode = LED_BLINK;
+                _led.incBlink();
+            }
         }
 
         void off() {
@@ -138,6 +142,8 @@ public:
         LED& _led;
         byte _mode;
     };
+
+    LED(): _nOns(0), _nBlinks(0) {}
 
     void handle(long time) {
         if(_nOns > 0) {
@@ -372,7 +378,6 @@ void Handler::setHandler(Handler* newHandler) {
 }
 
 void OffHandler::onButtonHold(long time) {
-    Serial.println("Off: hold");
     if(time > 500) setHandler(&strobeHandler);
 }
 
