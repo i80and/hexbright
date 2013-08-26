@@ -301,7 +301,7 @@ public:
     virtual void onHighTemperature() {}
 
     // Return this handler's human-readable name: useful for debugging
-    virtual const char* getName() {return "Base";}
+    virtual const char* getName() = 0;
 
     // Change the current handler object
     void setHandler(Handler* newHandler);
