@@ -85,21 +85,24 @@ boolean low_voltage_state() {
 
 class ChargeController {
 public:
-    ChargeController(): _oldChargeState(BATTERY), _chargeTime(0) {}
+    ChargeController(): _currentChargeState(BATTERY), _oldChargeState(BATTERY), _chargeTime(0) {}
 
     void init() {
         _chargeTime = millis();
-        _oldChargeState = getImmediateChargeState();
+        _currentChargeState = getImmediateChargeState();
+        _oldChargeState = _currentChargeState;
     }
 
     byte getChargeState(unsigned long time) {
         // Check the state of the charge controller
         byte chargeState = getImmediateChargeState();
+        byte result = _currentChargeState;
 
         // The charging pin gives confusing results if the light is discharged while plugged in.
         // Consequently, we only acknowledge state changes lasting more than 100ms
         if((chargeState == _oldChargeState) && ((time-_chargeTime) > 100)) {
-            return chargeState;
+            result = chargeState;
+            _currentChargeState = chargeState;
         }
 
         if(chargeState != _oldChargeState) {
@@ -107,10 +110,11 @@ public:
             _oldChargeState = chargeState;
         }
 
-        return _oldChargeState;
+        return result;
     }
 
 private:
+    byte _currentChargeState;
     byte _oldChargeState;
     unsigned long _chargeTime;
 
