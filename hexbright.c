@@ -3,6 +3,7 @@
     dhiltonp's firmware framework.  For licensing details, please see the provided LICENSE file.
 */
 
+#include <stdint.h>
 #include <math.h>
 #include <Wire.h>
 
@@ -406,6 +407,155 @@ public:
     virtual const char* getName() {return "Strobe";}
 } strobeHandler;
 
+static const byte MORSE[] = {
+    0x02, 0x02, // A .-
+    0x04, 0x01, // B -...
+    0x04, 0x05, // C -.-.
+    0x03, 0x01, // D -..
+    0x01, 0x00, // E .
+    0x04, 0x04, // F ..-.
+    0x03, 0x03, // G --.
+    0x04, 0x00, // H ....
+    0x02, 0x00, // I ..
+    0x04, 0x0E, // J .---
+    0x03, 0x05, // K -.-
+    0x04, 0x02, // L .-..
+    0x02, 0x03, // M --
+    0x02, 0x01, // N -.
+    0x03, 0x07, // O ---
+    0x04, 0x06, // P .--.
+    0x04, 0x0B, // Q --.-
+    0x03, 0x02, // R .-.
+    0x03, 0x00, // S ...
+    0x01, 0x01, // T -
+    0x03, 0x04, // U ..-
+    0x04, 0x08, // V ...-
+    0x03, 0x06, // W .--
+    0x04, 0x09, // X -..-
+    0x04, 0x0D, // Y -.--
+    0x04, 0x03, // Z --..
+    0x05, 0x1F, // 0 -----
+    0x05, 0x1E, // 1 .----
+    0x05, 0x1C, // 2 ..---
+    0x05, 0x18, // 3 ...--
+    0x05, 0x10, // 4 ....-
+    0x05, 0x00, // 5 .....
+    0x05, 0x01, // 6 -....
+    0x05, 0x03, // 7 --...
+    0x05, 0x07, // 8 ---..
+    0x05, 0x0F, // 9 ----.
+    0x00, 0x00, // Bad character
+};
+
+#define MORSE_BAD_INDEX 255
+
+class MorseHandler: public Handler {
+public:
+    MorseHandler(const char* text)
+    : _text(text), _byteIndex(0), _pulseIndex(0), _nextWakeup(0), _nextSleepWakeup(0) {}
+
+    virtual void init() {
+        Serial.print("Mode = Morse(\"");
+        Serial.print(_text);
+        Serial.println("\")");
+
+        _byteIndex = 0;
+        _pulseIndex = 0;
+        _nextWakeup = 0;
+        _nextSleepWakeup = 0;
+    }
+
+    virtual void handle(long time) {
+        // Here's the rules
+        // Dits between dits
+        // Da's between da's
+        // Dits between bytes
+        // Da's between words
+
+        if((_nextWakeup != 0) && (time < _nextWakeup)) return;
+        if((_nextSleepWakeup != 0) && (time < _nextSleepWakeup)) {
+            hb.setPower(0);
+            return;
+        }
+
+        // Loop, with an implicit word seperator
+        if(_text[_byteIndex] == '\0') {
+            _byteIndex = 0;
+            _pulseIndex = 0;
+
+            _nextSleepWakeup = millisPerDash;
+            return;
+        }
+
+        // Sleep between words
+        if(_text[_byteIndex] == ' ') {
+            _nextSleepWakeup = time + millisPerDash;
+            return;
+        }
+
+        const byte codeIndex = getCodeIndex(_text[_byteIndex]);
+        if(codeIndex == MORSE_BAD_INDEX) {
+            Serial.println("Bad morse index: ");
+            Serial.println(_text[_byteIndex]);
+            _nextSleepWakeup = time + millisPerBeat;
+            return;
+        }
+
+        const byte codeLen = MORSE[codeIndex];
+        const byte code = MORSE[codeIndex + 1];
+
+        // Go on to the next byte if the current pulse is done
+        if((_pulseIndex >= codeLen)) {
+            _byteIndex += 1;
+            _pulseIndex = 0;
+            _nextSleepWakeup = time + millisPerBeat;
+            return;
+        }
+
+        boolean isDash = ((code >> _pulseIndex) & 0x01);
+
+        if(isDash) {
+            _nextWakeup = time + millisPerDash;
+            _nextSleepWakeup = _nextWakeup + millisPerDash;
+        }
+        else {
+            _nextWakeup = time + millisPerBeat;
+            _nextSleepWakeup = _nextWakeup + millisPerBeat;
+        }
+
+        hb.setHighPower(true);
+        hb.setPower(255);
+
+        _pulseIndex += 1;
+    }
+
+    virtual void onButtonUp();
+
+    virtual const char* getName() {return "Morse";}
+
+private:
+    const char* _text;
+    byte _byteIndex;
+    byte _pulseIndex;
+
+    unsigned long _nextWakeup;
+    unsigned long _nextSleepWakeup;
+
+    static const unsigned long millisPerBeat = 250;
+    static const unsigned long millisPerDash = millisPerBeat * 3;
+
+    byte getCodeIndex(char ch) {
+        byte i = 0;
+
+        if (ch >= 'A' && ch <= 'Z') i = (ch - 'A');
+        else if (ch >= 'a' && ch <= 'z') i = (ch - 'a');
+        else if (ch >= '0' && ch <= '9') i = (ch - '0' - 26);
+        else return MORSE_BAD_INDEX;
+
+        return i * 2;
+    }
+} sosHandler("SOS");
+
 Handler* eventHandler = &offHandler;
 
 void Handler::setHandler(Handler* newHandler) {
@@ -415,6 +565,7 @@ void Handler::setHandler(Handler* newHandler) {
 
 void OffHandler::onButtonHold(long time) {
     if(time > 500) setHandler(&strobeHandler);
+    else setHandler(&sosHandler);
 }
 
 void OffHandler::onButtonUp() {
@@ -449,6 +600,10 @@ void StrobeHandler::onButtonHoldRelease(long time) {
 
 void StrobeHandler::onHighTemperature() {
     setHandler(&offHandler);
+}
+
+void MorseHandler::onButtonUp() {
+    eventHandler = &offHandler;
 }
 
 #define MIN_INTERVAL 20
