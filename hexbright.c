@@ -30,10 +30,6 @@
 #define CHARGED 1
 #define BATTERY 0
 
-// State
-unsigned long btnTime = 0;
-boolean btnDown = false;
-
 // Voltage stuff
 int band_gap_reading = 0;
 int lowest_band_gap_reading = 1000;
@@ -342,7 +338,7 @@ public:
                 _eventHandler->onButtonUp();
         }
         else if(_btnDown && newBtnDown && (buttonDownTime > HOLD_INTERVAL)) {
-            _eventHandler->onButtonHold(time-btnTime);
+            _eventHandler->onButtonHold(buttonDownTime);
         }
 
         _eventHandler->handle(time);
@@ -675,7 +671,6 @@ void setup()
     Serial.begin(9600);
     Wire.begin();
 
-    btnTime = millis();
     dispatcher.init();
     chargeController.init();
 
