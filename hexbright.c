@@ -519,12 +519,6 @@ public:
     }
 
     virtual void handle(long time) {
-        // Here's the rules
-        // Dits between dits
-        // Da's between da's
-        // Dits between bytes
-        // Da's between words
-
         if((_nextWakeup != 0) && (time < _nextWakeup)) return;
         if((_nextSleepWakeup != 0) && (time < _nextSleepWakeup)) {
             hb.setPower(0);
@@ -536,7 +530,7 @@ public:
             _byteIndex = 0;
             _pulseIndex = 0;
 
-            _nextSleepWakeup = millisPerDash;
+            _nextSleepWakeup = time + millisPerDash;
             return;
         }
 
@@ -561,7 +555,6 @@ public:
         if((_pulseIndex >= codeLen)) {
             _byteIndex += 1;
             _pulseIndex = 0;
-            _nextSleepWakeup = time + millisPerBeat;
             return;
         }
 
@@ -569,7 +562,7 @@ public:
 
         if(isDash) {
             _nextWakeup = time + millisPerDash;
-            _nextSleepWakeup = _nextWakeup + millisPerDash;
+            _nextSleepWakeup = _nextWakeup + millisPerBeat;
         }
         else {
             _nextWakeup = time + millisPerBeat;
