@@ -607,12 +607,12 @@ void OffHandler::onButtonUp() {
 }
 
 void ToggleHandler::onButtonHold(long time) {
-    if(_intensity != INTENSITY_HIGH) {
-        setIntensity(INTENSITY_OFF);
-    }
-    else {
+    if(time > 500) {
         dispatcher.setHandler(sosHandler);
+        return;
     }
+
+    setIntensity(INTENSITY_OFF);
 }
 
 void ToggleHandler::onButtonHoldRelease(long holdTime) {
