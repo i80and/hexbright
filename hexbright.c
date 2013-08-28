@@ -251,14 +251,12 @@ struct HexBright {
     }
 
     void setPower(byte power) {
-        pinMode(DPIN_PWR, OUTPUT);
-
         if(power == 0) {
-            digitalWrite(DPIN_PWR, LOW);
             digitalWrite(DPIN_DRV_EN, LOW);
             return;
         }
 
+        pinMode(DPIN_PWR, OUTPUT);
         digitalWrite(DPIN_PWR, HIGH);
 
         if(power > _maxPower) power = _maxPower;
@@ -273,6 +271,15 @@ struct HexBright {
 
     void setMaxPower(byte power) {
         _maxPower = power;
+    }
+
+    // Shut off the HexBright's power; resets program state
+    void off() {
+        Serial.println("Powering off");
+        setPower(0);
+
+        pinMode(DPIN_PWR, OUTPUT);
+        digitalWrite(DPIN_PWR, LOW);
     }
 
     GreenLED gled;
@@ -364,7 +371,7 @@ class OffHandler: public Handler {
 public:
     virtual void init() {
         Serial.println("Mode = Off");
-        hb.setPower(0);
+        hb.off();
     }
 
     virtual void onButtonHold(long holdTime);
@@ -388,8 +395,6 @@ public:
 
     virtual void handle(long time) {
         if(_dirty) {
-            pinMode(DPIN_PWR, OUTPUT);
-
             switch(_intensity) {
                 case INTENSITY_HIGH: {
                     Serial.println("Toggle = High");
