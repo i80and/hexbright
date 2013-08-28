@@ -307,10 +307,58 @@ public:
 
     // Return this handler's human-readable name: useful for debugging
     virtual const char* getName() = 0;
-
-    // Change the current handler object
-    void setHandler(Handler* newHandler);
 };
+
+#define MIN_INTERVAL 20
+#define HOLD_INTERVAL 250
+class Dispatcher {
+public:
+    Dispatcher(): _eventHandler(NULL), _btnDown(false) {}
+
+    void init();
+
+    void dispatchTemperatureEvents() {
+        _eventHandler->onHighTemperature();
+    }
+
+    void dispatchButtonEvents(long time) {
+        byte newBtnDown = digitalRead(DPIN_RLED_SW);
+        long buttonDownTime = (time - _btnTime);
+
+        if(!_btnDown && newBtnDown) {
+            _eventHandler->onButtonDown();
+        }
+        else if(_btnDown && !newBtnDown && (buttonDownTime > MIN_INTERVAL)) {
+            if(buttonDownTime > HOLD_INTERVAL)
+                _eventHandler->onButtonHoldRelease(buttonDownTime);
+            else
+                _eventHandler->onButtonUp();
+        }
+        else if(_btnDown && newBtnDown && (buttonDownTime > HOLD_INTERVAL)) {
+            _eventHandler->onButtonHold(time-btnTime);
+        }
+
+        _eventHandler->handle(time);
+
+        // Remember button state so we can detect transitions
+        if (newBtnDown != _btnDown) {
+            _btnTime = time;
+            _btnDown = newBtnDown;
+            delay(50);
+        }
+    }
+
+    void setHandler(Handler& newHandler) {
+        _eventHandler = &newHandler;
+        _eventHandler->init();
+    }
+
+private:
+    Handler* _eventHandler;
+
+    byte _btnDown;
+    long _btnTime;
+} dispatcher;
 
 class OffHandler: public Handler {
 public:
@@ -556,35 +604,31 @@ private:
     }
 } sosHandler("SOS");
 
-Handler* eventHandler = &offHandler;
-
-void Handler::setHandler(Handler* newHandler) {
-    eventHandler = newHandler;
-    eventHandler->init();
-}
-
 void OffHandler::onButtonHold(long time) {
-    if(time > 500) setHandler(&strobeHandler);
-    else setHandler(&sosHandler);
+    if(time > 500) dispatcher.setHandler(strobeHandler);
 }
 
 void OffHandler::onButtonUp() {
-    setHandler(&toggleHandler);
+    dispatcher.setHandler(toggleHandler);
 }
 
 void ToggleHandler::onButtonHold(long time) {
-    setIntensity(INTENSITY_OFF);
+    if(_intensity != INTENSITY_HIGH) {
+        setIntensity(INTENSITY_OFF);
+    }
+    else {
+        dispatcher.setHandler(sosHandler);
+    }
 }
 
 void ToggleHandler::onButtonHoldRelease(long holdTime) {
-    _intensity = INTENSITY_LOW;
-    setHandler(&offHandler);
+    dispatcher.setHandler(offHandler);
 }
 
 void ToggleHandler::onButtonUp() {
     if(_intensity == INTENSITY_HIGH) {
         setIntensity(INTENSITY_LOW);
-        setHandler(&offHandler);
+        dispatcher.setHandler(offHandler);
     }
     else if(_intensity == INTENSITY_MED) {
         setIntensity(INTENSITY_HIGH);
@@ -595,63 +639,23 @@ void ToggleHandler::onButtonUp() {
 }
 
 void StrobeHandler::onButtonHoldRelease(long time) {
-    setHandler(&offHandler);
+    dispatcher.setHandler(offHandler);
 }
 
 void StrobeHandler::onHighTemperature() {
-    setHandler(&offHandler);
+    dispatcher.setHandler(offHandler);
 }
 
 void MorseHandler::onButtonUp() {
-    eventHandler = &offHandler;
+    dispatcher.setHandler(offHandler);
 }
 
-#define MIN_INTERVAL 20
-#define HOLD_INTERVAL 250
-class Dispatcher {
-public:
-    Dispatcher(): _btnDown(false) {}
+void Dispatcher::init() {
+    setHandler(offHandler);
 
-    void init() {
-        _btnTime = millis();
-        _btnDown = digitalRead(DPIN_RLED_SW);
-    }
-
-    void dispatchTemperatureEvents() {
-        eventHandler->onHighTemperature();
-    }
-
-    void dispatchButtonEvents(long time) {
-        byte newBtnDown = digitalRead(DPIN_RLED_SW);
-        long buttonDownTime = (time - _btnTime);
-
-        if(!_btnDown && newBtnDown) {
-            eventHandler->onButtonDown();
-        }
-        else if(_btnDown && !newBtnDown && (buttonDownTime > MIN_INTERVAL)) {
-            if(buttonDownTime > HOLD_INTERVAL)
-                eventHandler->onButtonHoldRelease(buttonDownTime);
-            else
-                eventHandler->onButtonUp();
-        }
-        else if(_btnDown && newBtnDown && (buttonDownTime > HOLD_INTERVAL)) {
-            eventHandler->onButtonHold(time-btnTime);
-        }
-
-        eventHandler->handle(time);
-
-        // Remember button state so we can detect transitions
-        if (newBtnDown != _btnDown) {
-            _btnTime = time;
-            _btnDown = newBtnDown;
-            delay(50);
-        }
-    }
-
-private:
-    byte _btnDown;
-    long _btnTime;
-} dispatcher;
+    _btnTime = millis();
+    _btnDown = digitalRead(DPIN_RLED_SW);
+}
 
 // Main code
 void setup()
@@ -674,9 +678,6 @@ void setup()
     Wire.begin();
 
     btnTime = millis();
-
-    eventHandler = &offHandler;
-    eventHandler->init();
     dispatcher.init();
     chargeController.init();
 
