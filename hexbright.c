@@ -35,7 +35,7 @@ int band_gap_reading = 0;
 int lowest_band_gap_reading = 1000;
 
 #define APIN_BAND_GAP 14
-unsigned int read_adc(unsigned char pin) {
+unsigned int read_adc(byte pin) {
     // a useful reference: http://www.protostack.com/blog/2011/02/analogue-to-digital-conversion-on-an-atmega168/
 
     // configure adc: use refs0, pin = some combination of MUX(0-3).
@@ -51,7 +51,7 @@ unsigned int read_adc(unsigned char pin) {
     ADCSRA |= _BV(ADSC);
 
     // wait for the conversion to complete (ADSC bit of ADCSRA is cleared, aka ADSCRA & ADSC)
-    while (bit_is_set(ADCSRA, ADSC));
+    while(bit_is_set(ADCSRA, ADSC));
 
     return ADC;
 }
@@ -74,9 +74,10 @@ boolean low_voltage_state() {
     // low voltage state if band gap value goes too high.
     // I have a value of 2 for this to work (with a 150 ms delay in read_adc).
     // tighter control means earlier detection of low battery state
-    if (band_gap_reading > lowest_band_gap_reading+2) {
+    if(band_gap_reading > lowest_band_gap_reading+2) {
         low = true;
     }
+
     return low;
 }
 
@@ -260,8 +261,8 @@ struct HexBright {
     }
 
     void setIntensity(byte intensity) {
-        unsigned int gamma = (intensity*intensity)>>8;
-        if (gamma < 6) gamma = 6;
+        unsigned int gamma = (intensity*intensity) >> 8;
+        if(gamma < 6) gamma = 6;
         setPower(gamma);
     }
 
@@ -288,6 +289,7 @@ private:
 // Abstract base class for all state machine handler objects
 class Handler {
 public:
+    // Called when this handler is attached
     virtual void init() = 0;
 
     // Called during the mainloop after all events have been handled
@@ -373,7 +375,7 @@ public:
     virtual void onButtonHold(long holdTime);
     virtual void onButtonUp();
 
-    virtual const char* getName() {return "Off";}
+    virtual const char* getName() { return "Off"; }
 } offHandler;
 
 class ToggleHandler: public Handler {
@@ -430,7 +432,7 @@ public:
         _dirty = true;
     }
 
-    virtual const char* getName() {return "Toggle";}
+    virtual const char* getName() { return "Toggle"; }
 
 private:
     byte _intensity;
@@ -453,7 +455,7 @@ public:
 
     virtual void onHighTemperature();
 
-    virtual const char* getName() {return "Strobe";}
+    virtual const char* getName() { return "Strobe"; }
 } strobeHandler;
 
 static const byte MORSE[] = {
@@ -573,7 +575,7 @@ public:
 
     virtual void onButtonUp();
 
-    virtual const char* getName() {return "Morse";}
+    virtual const char* getName() { return "Morse"; }
 
 private:
     const char* _text;
@@ -652,8 +654,7 @@ void Dispatcher::init() {
 }
 
 // Main code
-void setup()
-{
+void setup() {
     // We just powered on!  That means either we got plugged
     // into USB, or the user is pressing the power button.
     pinMode(DPIN_PWR,      INPUT);
@@ -678,12 +679,10 @@ void setup()
 }
 
 GreenLED::Context chargingLEDContext = hb.gled.getContext();
-
 RedLED::Context temperatureLEDContext = hb.rled.getContext();
 RedLED::Context batteryLEDContext = hb.rled.getContext();
 
-void loop()
-{
+void loop() {
     static unsigned long lastTempTime;
 
     unsigned long time = millis();
